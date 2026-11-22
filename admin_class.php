@@ -1,280 +1,518 @@
 <?php
-session_start();
-ini_set('display_errors', 1);
+require_once __DIR__ . '/security.php';
+
 Class Action {
 	private $db;
 
 	public function __construct() {
 		ob_start();
-   	include 'db_connect.php';
-    
-    $this->db = $conn;
+		include 'db_connect.php';
+		$this->db = $conn;
 	}
+
 	function __destruct() {
-	    $this->db->close();
-	    ob_end_flush();
+		if ($this->db && $this->db instanceof mysqli) {
+			$this->db->close();
+		}
+		if (ob_get_level() > 0) {
+			ob_end_flush();
+		}
 	}
 
 	function login(){
-		extract($_POST);
-		$qry = $this->db->query("SELECT * FROM users where username = '".$username."' and password = '".$password."' ");
-		if($qry->num_rows > 0){
-			foreach ($qry->fetch_array() as $key => $value) {
-				if($key != 'passwors' && !is_numeric($key))
-					$_SESSION['login_'.$key] = $value;
-			}
-				return 1;
-		}else{
+		$username = trim($_POST['username'] ?? '');
+		$password = (string)($_POST['password'] ?? '');
+
+		if (empty($username) || empty($password)) {
 			return 3;
 		}
+
+		$stmt = $this->db->prepare("SELECT * FROM users WHERE username = ?");
+		$stmt->bind_param("s", $username);
+		$stmt->execute();
+		$result = $stmt->get_result();
+
+		if ($result && $result->num_rows > 0) {
+			$user = $result->fetch_assoc();
+			$db_pass = $user['password'];
+
+			$password_matches = false;
+			$needs_rehash = false;
+
+			// Check password: 1. standard hash, 2. legacy plaintext fallback, 3. legacy MD5 fallback
+			if (password_verify($password, $db_pass)) {
+				$password_matches = true;
+				if (password_needs_rehash($db_pass, PASSWORD_DEFAULT)) {
+					$needs_rehash = true;
+				}
+			} elseif ($password === $db_pass) {
+				$password_matches = true;
+				$needs_rehash = true;
+			} elseif (md5($password) === $db_pass) {
+				$password_matches = true;
+				$needs_rehash = true;
+			}
+
+			if ($password_matches) {
+				// Transparently upgrade legacy passwords to modern bcrypt
+				if ($needs_rehash) {
+					$new_hash = password_hash($password, PASSWORD_DEFAULT);
+					$update_stmt = $this->db->prepare("UPDATE users SET password = ? WHERE id = ?");
+					$update_stmt->bind_param("si", $new_hash, $user['id']);
+					$update_stmt->execute();
+					$update_stmt->close();
+				}
+
+				foreach ($user as $key => $value) {
+					if ($key != 'password' && !is_numeric($key)) {
+						$_SESSION['login_' . $key] = $value;
+					}
+				}
+				$stmt->close();
+				return 1;
+			}
+		}
+		if ($stmt) {
+			$stmt->close();
+		}
+		return 3;
 	}
+
 	function login2(){
-		extract($_POST);
-		$qry = $this->db->query("SELECT * FROM users where username = '".$email."' and password = '".md5($password)."' ");
-		if($qry->num_rows > 0){
-			foreach ($qry->fetch_array() as $key => $value) {
-				if($key != 'passwors' && !is_numeric($key))
-					$_SESSION['login_'.$key] = $value;
-			}
-				return 1;
-		}else{
+		$email = trim($_POST['email'] ?? '');
+		$password = (string)($_POST['password'] ?? '');
+
+		if (empty($email) || empty($password)) {
 			return 3;
 		}
+
+		$stmt = $this->db->prepare("SELECT * FROM users WHERE username = ?");
+		$stmt->bind_param("s", $email);
+		$stmt->execute();
+		$result = $stmt->get_result();
+
+		if ($result && $result->num_rows > 0) {
+			$user = $result->fetch_assoc();
+			$db_pass = $user['password'];
+
+			$password_matches = false;
+			$needs_rehash = false;
+
+			if (password_verify($password, $db_pass)) {
+				$password_matches = true;
+				if (password_needs_rehash($db_pass, PASSWORD_DEFAULT)) {
+					$needs_rehash = true;
+				}
+			} elseif ($password === $db_pass) {
+				$password_matches = true;
+				$needs_rehash = true;
+			} elseif (md5($password) === $db_pass) {
+				$password_matches = true;
+				$needs_rehash = true;
+			}
+
+			if ($password_matches) {
+				if ($needs_rehash) {
+					$new_hash = password_hash($password, PASSWORD_DEFAULT);
+					$update_stmt = $this->db->prepare("UPDATE users SET password = ? WHERE id = ?");
+					$update_stmt->bind_param("si", $new_hash, $user['id']);
+					$update_stmt->execute();
+					$update_stmt->close();
+				}
+
+				foreach ($user as $key => $value) {
+					if ($key != 'password' && !is_numeric($key)) {
+						$_SESSION['login_' . $key] = $value;
+					}
+				}
+				$stmt->close();
+				return 1;
+			}
+		}
+		if ($stmt) {
+			$stmt->close();
+		}
+		return 3;
 	}
+
 	function logout(){
 		session_destroy();
 		foreach ($_SESSION as $key => $value) {
 			unset($_SESSION[$key]);
 		}
 		header("location:login.php");
+		exit;
 	}
+
 	function logout2(){
 		session_destroy();
 		foreach ($_SESSION as $key => $value) {
 			unset($_SESSION[$key]);
 		}
 		header("location:../index.php");
+		exit;
 	}
 
 	function save_user(){
-		extract($_POST);
-		$data = " name = '$name' ";
-		$data .= ", username = '$username' ";
-		$data .= ", password = '$password' ";
-		$data .= ", type = '$type' ";
+		$id = !empty($_POST['id']) ? intval($_POST['id']) : null;
+		$name = trim($_POST['name'] ?? '');
+		$username = trim($_POST['username'] ?? '');
+		$password = (string)($_POST['password'] ?? '');
+		$type = intval($_POST['type'] ?? 2);
+
 		if(empty($id)){
-			$save = $this->db->query("INSERT INTO users set ".$data);
-		}else{
-			$save = $this->db->query("UPDATE users set ".$data." where id = ".$id);
+			$hashed = password_hash($password, PASSWORD_DEFAULT);
+			$stmt = $this->db->prepare("INSERT INTO users (name, username, password, type) VALUES (?, ?, ?, ?)");
+			$stmt->bind_param("sssi", $name, $username, $hashed, $type);
+			$save = $stmt->execute();
+			$stmt->close();
+		} else {
+			if(!empty($password)){
+				$hashed = password_hash($password, PASSWORD_DEFAULT);
+				$stmt = $this->db->prepare("UPDATE users SET name = ?, username = ?, password = ?, type = ? WHERE id = ?");
+				$stmt->bind_param("sssii", $name, $username, $hashed, $type, $id);
+			} else {
+				$stmt = $this->db->prepare("UPDATE users SET name = ?, username = ?, type = ? WHERE id = ?");
+				$stmt->bind_param("ssii", $name, $username, $type, $id);
+			}
+			$save = $stmt->execute();
+			$stmt->close();
 		}
 		if($save){
 			return 1;
 		}
+		return 0;
 	}
-	function signup(){
-		extract($_POST);
-		$data = " name = '$name' ";
-		$data .= ", contact = '$contact' ";
-		$data .= ", address = '$address' ";
-		$data .= ", username = '$email' ";
-		$data .= ", password = '".md5($password)."' ";
-		$data .= ", type = 3";
-		$chk = $this->db->query("SELECT * FROM users where username = '$email' ")->num_rows;
-		if($chk > 0){
-			return 2;
-			exit;
+
+	function delete_user(){
+		$id = intval($_POST['id'] ?? 0);
+		if($id <= 0){
+			return 0;
 		}
-			$save = $this->db->query("INSERT INTO users set ".$data);
+		if(isset($_SESSION['login_id']) && $_SESSION['login_id'] == $id){
+			return 2; // Prevent deleting active session user
+		}
+		$stmt = $this->db->prepare("DELETE FROM users WHERE id = ?");
+		$stmt->bind_param("i", $id);
+		$delete = $stmt->execute();
+		$stmt->close();
+		if($delete){
+			return 1;
+		}
+		return 0;
+	}
+
+	function signup(){
+		$name = trim($_POST['name'] ?? '');
+		$contact = trim($_POST['contact'] ?? '');
+		$address = trim($_POST['address'] ?? '');
+		$email = trim($_POST['email'] ?? '');
+		$password = (string)($_POST['password'] ?? '');
+
+		$chk_stmt = $this->db->prepare("SELECT id FROM users WHERE username = ?");
+		$chk_stmt->bind_param("s", $email);
+		$chk_stmt->execute();
+		$chk_res = $chk_stmt->get_result();
+		if($chk_res && $chk_res->num_rows > 0){
+			$chk_stmt->close();
+			return 2;
+		}
+		$chk_stmt->close();
+
+		$hashed = password_hash($password, PASSWORD_DEFAULT);
+		$type = 3;
+		$stmt = $this->db->prepare("INSERT INTO users (name, contact, address, username, password, type) VALUES (?, ?, ?, ?, ?, ?)");
+		$stmt->bind_param("sssssi", $name, $contact, $address, $email, $hashed, $type);
+		$save = $stmt->execute();
+		$new_id = $stmt->insert_id;
+		$stmt->close();
+
 		if($save){
-			$qry = $this->db->query("SELECT * FROM users where username = '".$email."' and password = '".md5($password)."' ");
-			if($qry->num_rows > 0){
-				foreach ($qry->fetch_array() as $key => $value) {
-					if($key != 'passwors' && !is_numeric($key))
+			$stmt = $this->db->prepare("SELECT * FROM users WHERE id = ?");
+			$stmt->bind_param("i", $new_id);
+			$stmt->execute();
+			$res = $stmt->get_result();
+			if($res && $res->num_rows > 0){
+				foreach ($res->fetch_assoc() as $key => $value) {
+					if($key != 'password' && !is_numeric($key)){
 						$_SESSION['login_'.$key] = $value;
+					}
 				}
 			}
+			$stmt->close();
 			return 1;
 		}
+		return 0;
 	}
 
 	function save_settings(){
-		extract($_POST);
-		$data = " name = '".str_replace("'","&#x2019;",$name)."' ";
-		$data .= ", email = '$email' ";
-		$data .= ", contact = '$contact' ";
-		$data .= ", about_content = '".htmlentities(str_replace("'","&#x2019;",$about))."' ";
-		if($_FILES['img']['tmp_name'] != ''){
-						$fname = strtotime(date('y-m-d H:i')).'_'.$_FILES['img']['name'];
-						$move = move_uploaded_file($_FILES['img']['tmp_name'],'../assets/img/'. $fname);
-					$data .= ", cover_img = '$fname' ";
+		$name = trim($_POST['name'] ?? '');
+		$email = trim($_POST['email'] ?? '');
+		$contact = trim($_POST['contact'] ?? '');
+		$about = trim($_POST['about'] ?? '');
+		$cover_img = '';
 
+		if(isset($_FILES['img']['tmp_name']) && $_FILES['img']['tmp_name'] != ''){
+			$fname = strtotime(date('y-m-d H:i')).'_'.basename($_FILES['img']['name']);
+			if(move_uploaded_file($_FILES['img']['tmp_name'], __DIR__ . '/assets/img/' . $fname)){
+				$cover_img = $fname;
+			}
 		}
-		
-		// echo "INSERT INTO system_settings set ".$data;
+
 		$chk = $this->db->query("SELECT * FROM system_settings");
-		if($chk->num_rows > 0){
-			$save = $this->db->query("UPDATE system_settings set ".$data);
-		}else{
-			$save = $this->db->query("INSERT INTO system_settings set ".$data);
+		if($chk && $chk->num_rows > 0){
+			if(!empty($cover_img)){
+				$stmt = $this->db->prepare("UPDATE system_settings SET name = ?, email = ?, contact = ?, about_content = ?, cover_img = ?");
+				$stmt->bind_param("sssss", $name, $email, $contact, $about, $cover_img);
+			} else {
+				$stmt = $this->db->prepare("UPDATE system_settings SET name = ?, email = ?, contact = ?, about_content = ?");
+				$stmt->bind_param("ssss", $name, $email, $contact, $about);
+			}
+		} else {
+			$stmt = $this->db->prepare("INSERT INTO system_settings (name, email, contact, about_content, cover_img) VALUES (?, ?, ?, ?, ?)");
+			$stmt->bind_param("sssss", $name, $email, $contact, $about, $cover_img);
 		}
+		$save = $stmt->execute();
+		$stmt->close();
+
 		if($save){
-		$query = $this->db->query("SELECT * FROM system_settings limit 1")->fetch_array();
-		foreach ($query as $key => $value) {
-			if(!is_numeric($key))
-				$_SESSION['setting_'.$key] = $value;
-		}
-
-			return 1;
+			$query = $this->db->query("SELECT * FROM system_settings limit 1");
+			if($query && $query->num_rows > 0){
+				foreach ($query->fetch_assoc() as $key => $value) {
+					if(!is_numeric($key))
+						$_SESSION['setting_'.$key] = $value;
 				}
+			}
+			return 1;
+		}
+		return 0;
 	}
 
-	
 	function save_loan_type(){
-		extract($_POST);
-		$data = " type_name = '$type_name' ";
-		$data .= " , description = '$description' ";
+		$id = !empty($_POST['id']) ? intval($_POST['id']) : null;
+		$type_name = trim($_POST['type_name'] ?? '');
+		$description = trim($_POST['description'] ?? '');
+
 		if(empty($id)){
-			$save = $this->db->query("INSERT INTO loan_types set ".$data);
-		}else{
-			$save = $this->db->query("UPDATE loan_types set ".$data." where id=".$id);
+			$stmt = $this->db->prepare("INSERT INTO loan_types (type_name, description) VALUES (?, ?)");
+			$stmt->bind_param("ss", $type_name, $description);
+		} else {
+			$stmt = $this->db->prepare("UPDATE loan_types SET type_name = ?, description = ? WHERE id = ?");
+			$stmt->bind_param("ssi", $type_name, $description, $id);
 		}
-		if($save)
-			return 1;
+		$save = $stmt->execute();
+		$stmt->close();
+		if($save) return 1;
+		return 0;
 	}
+
 	function delete_loan_type(){
-		extract($_POST);
-		$delete = $this->db->query("DELETE FROM loan_types where id = ".$id);
-		if($delete)
-			return 1;
+		$id = intval($_POST['id'] ?? 0);
+		$stmt = $this->db->prepare("DELETE FROM loan_types WHERE id = ?");
+		$stmt->bind_param("i", $id);
+		$delete = $stmt->execute();
+		$stmt->close();
+		if($delete) return 1;
+		return 0;
 	}
+
 	function save_plan(){
-		extract($_POST);
-		$data = " months = '$months' ";
-		$data .= ", interest_percentage = '$interest_percentage' ";
-		$data .= ", penalty_rate = '$penalty_rate' ";
-		
+		$id = !empty($_POST['id']) ? intval($_POST['id']) : null;
+		$months = intval($_POST['months'] ?? 0);
+		$interest_percentage = floatval($_POST['interest_percentage'] ?? 0);
+		$penalty_rate = floatval($_POST['penalty_rate'] ?? 0);
+
 		if(empty($id)){
-			$save = $this->db->query("INSERT INTO loan_plan set ".$data);
-		}else{
-			$save = $this->db->query("UPDATE loan_plan set ".$data." where id=".$id);
+			$stmt = $this->db->prepare("INSERT INTO loan_plan (months, interest_percentage, penalty_rate) VALUES (?, ?, ?)");
+			$stmt->bind_param("idd", $months, $interest_percentage, $penalty_rate);
+		} else {
+			$stmt = $this->db->prepare("UPDATE loan_plan SET months = ?, interest_percentage = ?, penalty_rate = ? WHERE id = ?");
+			$stmt->bind_param("iddi", $months, $interest_percentage, $penalty_rate, $id);
 		}
-		if($save)
-			return 1;
+		$save = $stmt->execute();
+		$stmt->close();
+		if($save) return 1;
+		return 0;
 	}
+
 	function delete_plan(){
-		extract($_POST);
-		$delete = $this->db->query("DELETE FROM loan_plan where id = ".$id);
-		if($delete)
-			return 1;
+		$id = intval($_POST['id'] ?? 0);
+		$stmt = $this->db->prepare("DELETE FROM loan_plan WHERE id = ?");
+		$stmt->bind_param("i", $id);
+		$delete = $stmt->execute();
+		$stmt->close();
+		if($delete) return 1;
+		return 0;
 	}
+
 	function save_borrower(){
-		extract($_POST);
-		$data = " lastname = '$lastname' ";
-		$data .= ", firstname = '$firstname' ";
-		$data .= ", middlename = '$middlename' ";
-		$data .= ", address = '$address' ";
-		$data .= ", contact_no = '$contact_no' ";
-		$data .= ", email = '$email' ";
-		$data .= ", tax_id = '$tax_id' ";
-		
+		$id = !empty($_POST['id']) ? intval($_POST['id']) : null;
+		$lastname = trim($_POST['lastname'] ?? '');
+		$firstname = trim($_POST['firstname'] ?? '');
+		$middlename = trim($_POST['middlename'] ?? '');
+		$address = trim($_POST['address'] ?? '');
+		$contact_no = trim($_POST['contact_no'] ?? '');
+		$email = trim($_POST['email'] ?? '');
+		$tax_id = trim($_POST['tax_id'] ?? '');
+
 		if(empty($id)){
-			$save = $this->db->query("INSERT INTO borrowers set ".$data);
-		}else{
-			$save = $this->db->query("UPDATE borrowers set ".$data." where id=".$id);
+			$stmt = $this->db->prepare("INSERT INTO borrowers (lastname, firstname, middlename, address, contact_no, email, tax_id) VALUES (?, ?, ?, ?, ?, ?, ?)");
+			$stmt->bind_param("sssssss", $lastname, $firstname, $middlename, $address, $contact_no, $email, $tax_id);
+		} else {
+			$stmt = $this->db->prepare("UPDATE borrowers SET lastname = ?, firstname = ?, middlename = ?, address = ?, contact_no = ?, email = ?, tax_id = ? WHERE id = ?");
+			$stmt->bind_param("sssssssi", $lastname, $firstname, $middlename, $address, $contact_no, $email, $tax_id, $id);
 		}
-		if($save)
-			return 1;
+		$save = $stmt->execute();
+		$stmt->close();
+		if($save) return 1;
+		return 0;
 	}
+
 	function delete_borrower(){
-		extract($_POST);
-		$delete = $this->db->query("DELETE FROM borrowers where id = ".$id);
-		if($delete)
-			return 1;
+		$id = intval($_POST['id'] ?? 0);
+		$stmt = $this->db->prepare("DELETE FROM borrowers WHERE id = ?");
+		$stmt->bind_param("i", $id);
+		$delete = $stmt->execute();
+		$stmt->close();
+		if($delete) return 1;
+		return 0;
 	}
+
 	function save_loan(){
-		extract($_POST);
-			$data = " borrower_id = $borrower_id ";
-			$data .= " , loan_type_id = '$loan_type_id' ";
-			$data .= " , plan_id = '$plan_id' ";
-			$data .= " , amount = '$amount' ";
-			$data .= " , purpose = '$purpose' ";
-			if(isset($status)){
-				$data .= " , status = '$status' ";
-				if($status == 2){
-					$plan = $this->db->query("SELECT * FROM loan_plan where id = $plan_id ")->fetch_array();
-					for($i= 1; $i <= $plan['months'];$i++){
-						$date = date("Y-m-d",strtotime(date("Y-m-d")." +".$i." months"));
-					$chk = $this->db->query("SELECT * FROM loan_schedules where loan_id = $id and date(date_due) ='$date'  ");
-					if($chk->num_rows > 0){
-						$ls_id = $chk->fetch_array()['id'];
-						$this->db->query("UPDATE loan_schedules set loan_id = $id, date_due ='$date' where id = $ls_id ");
-					}else{
-						$this->db->query("INSERT INTO loan_schedules set loan_id = $id, date_due ='$date' ");
-						$ls_id = $this->db->insert_id;
-					}
-					$sid[] = $ls_id;
-					}
-					$sid = implode(",",$sid);
-					$this->db->query("DELETE FROM loan_schedules where loan_id = $id and id not in ($sid) ");
-				$data .= " , date_released = '".date("Y-m-d H:i")."' ";
+		$id = !empty($_POST['id']) ? intval($_POST['id']) : null;
+		$borrower_id = intval($_POST['borrower_id'] ?? 0);
+		$loan_type_id = intval($_POST['loan_type_id'] ?? 0);
+		$plan_id = intval($_POST['plan_id'] ?? 0);
+		$amount = floatval($_POST['amount'] ?? 0);
+		$purpose = trim($_POST['purpose'] ?? '');
+		$status = isset($_POST['status']) ? intval($_POST['status']) : 0;
 
-				}else{
-					$chk = $this->db->query("SELECT * FROM loan_schedules where loan_id = $id")->num_rows;
-					if($chk > 0){
-						$thi->db->query("DELETE FROM loan_schedules where loan_id = $id ");
-					}
-
-				}
-			}
-			if(empty($id)){
-				$ref_no = mt_rand(1,99999999);
-				$i= 1;
-
-				while($i== 1){
-					$check = $this->db->query("SELECT * FROM loan_list where ref_no ='$ref_no' ")->num_rows;
-					if($check > 0){
-					$ref_no = mt_rand(1,99999999);
-					}else{
-						$i = 0;
-					}
-				}
-				$data .= " , ref_no = '$ref_no' ";
-			}
-			if(empty($id))
-			$save = $this->db->query("INSERT INTO loan_list set ".$data);
-			else
-			$save = $this->db->query("UPDATE loan_list set ".$data." where id=".$id);
-		if($save)
-			return 1;
-	}
-	function delete_loan(){
-		extract($_POST);
-		$delete = $this->db->query("DELETE FROM loan_list where id = ".$id);
-		if($delete)
-			return 1;
-	}
-	function save_payment(){
-		extract($_POST);
-			$data = " loan_id = $loan_id ";
-			$data .= " , payee = '$payee' ";
-			$data .= " , amount = '$amount' ";
-			$data .= " , penalty_amount = '$penalty_amount' ";
-			$data .= " , overdue = '$overdue' ";
 		if(empty($id)){
-			$save = $this->db->query("INSERT INTO payments set ".$data);
-		}else{
-			$save = $this->db->query("UPDATE payments set ".$data." where id = ".$id);
+			// Generate unique ref_no
+			$ref_no = (string)mt_rand(1, 99999999);
+			$chk_ref = $this->db->prepare("SELECT id FROM loan_list WHERE ref_no = ?");
+			while(true){
+				$chk_ref->bind_param("s", $ref_no);
+				$chk_ref->execute();
+				$res = $chk_ref->get_result();
+				if($res && $res->num_rows > 0){
+					$ref_no = (string)mt_rand(1, 99999999);
+				} else {
+					break;
+				}
+			}
+			$chk_ref->close();
 
+			$stmt = $this->db->prepare("INSERT INTO loan_list (ref_no, loan_type_id, borrower_id, purpose, amount, plan_id, status) VALUES (?, ?, ?, ?, ?, ?, ?)");
+			$stmt->bind_param("siisddi", $ref_no, $loan_type_id, $borrower_id, $purpose, $amount, $plan_id, $status);
+			$save = $stmt->execute();
+			$id = $stmt->insert_id;
+			$stmt->close();
+		} else {
+			$stmt = $this->db->prepare("UPDATE loan_list SET loan_type_id = ?, borrower_id = ?, purpose = ?, amount = ?, plan_id = ?, status = ? WHERE id = ?");
+			$stmt->bind_param("iisddii", $loan_type_id, $borrower_id, $purpose, $amount, $plan_id, $status, $id);
+			$save = $stmt->execute();
+			$stmt->close();
 		}
-		if($save)
-			return 1;
 
+		if($save && $id){
+			if($status == 2){
+				// Loan is Released: generate schedules
+				$plan_stmt = $this->db->prepare("SELECT months FROM loan_plan WHERE id = ?");
+				$plan_stmt->bind_param("i", $plan_id);
+				$plan_stmt->execute();
+				$plan_res = $plan_stmt->get_result();
+				$months = 0;
+				if($plan_res && $plan_res->num_rows > 0){
+					$months = intval($plan_res->fetch_assoc()['months']);
+				}
+				$plan_stmt->close();
+
+				$sid = [];
+				for($i = 1; $i <= $months; $i++){
+					$date = date("Y-m-d", strtotime(date("Y-m-d") . " +" . $i . " months"));
+					$chk_sch = $this->db->prepare("SELECT id FROM loan_schedules WHERE loan_id = ? AND date(date_due) = ?");
+					$chk_sch->bind_param("is", $id, $date);
+					$chk_sch->execute();
+					$sch_res = $chk_sch->get_result();
+
+					if($sch_res && $sch_res->num_rows > 0){
+						$ls_id = $sch_res->fetch_assoc()['id'];
+					} else {
+						$ins_sch = $this->db->prepare("INSERT INTO loan_schedules (loan_id, date_due) VALUES (?, ?)");
+						$ins_sch->bind_param("is", $id, $date);
+						$ins_sch->execute();
+						$ls_id = $ins_sch->insert_id;
+						$ins_sch->close();
+					}
+					$chk_sch->close();
+					$sid[] = $ls_id;
+				}
+
+				if(!empty($sid)){
+					$sid_list = implode(",", array_map('intval', $sid));
+					$this->db->query("DELETE FROM loan_schedules WHERE loan_id = $id AND id NOT IN ($sid_list)");
+				}
+
+				$rel_stmt = $this->db->prepare("UPDATE loan_list SET date_released = NOW() WHERE id = ?");
+				$rel_stmt->bind_param("i", $id);
+				$rel_stmt->execute();
+				$rel_stmt->close();
+			} else {
+				// Status changed away from released: remove existing schedules
+				$del_sch = $this->db->prepare("DELETE FROM loan_schedules WHERE loan_id = ?");
+				$del_sch->bind_param("i", $id);
+				$del_sch->execute();
+				$del_sch->close();
+			}
+			return 1;
+		}
+		return 0;
 	}
+
+	function delete_loan(){
+		$id = intval($_POST['id'] ?? 0);
+		$del_sch = $this->db->prepare("DELETE FROM loan_schedules WHERE loan_id = ?");
+		$del_sch->bind_param("i", $id);
+		$del_sch->execute();
+		$del_sch->close();
+
+		$stmt = $this->db->prepare("DELETE FROM loan_list WHERE id = ?");
+		$stmt->bind_param("i", $id);
+		$delete = $stmt->execute();
+		$stmt->close();
+		if($delete) return 1;
+		return 0;
+	}
+
+	function save_payment(){
+		$id = !empty($_POST['id']) ? intval($_POST['id']) : null;
+		$loan_id = intval($_POST['loan_id'] ?? 0);
+		$payee = trim($_POST['payee'] ?? '');
+		$amount = floatval($_POST['amount'] ?? 0);
+		$penalty_amount = floatval($_POST['penalty_amount'] ?? 0);
+		$overdue = intval($_POST['overdue'] ?? 0);
+
+		if(empty($id)){
+			$stmt = $this->db->prepare("INSERT INTO payments (loan_id, payee, amount, penalty_amount, overdue) VALUES (?, ?, ?, ?, ?)");
+			$stmt->bind_param("isddi", $loan_id, $payee, $amount, $penalty_amount, $overdue);
+		} else {
+			$stmt = $this->db->prepare("UPDATE payments SET loan_id = ?, payee = ?, amount = ?, penalty_amount = ?, overdue = ? WHERE id = ?");
+			$stmt->bind_param("isddii", $loan_id, $payee, $amount, $penalty_amount, $overdue, $id);
+		}
+		$save = $stmt->execute();
+		$stmt->close();
+		if($save) return 1;
+		return 0;
+	}
+
 	function delete_payment(){
-		extract($_POST);
-		$delete = $this->db->query("DELETE FROM payments where id = ".$id);
-		if($delete)
-			return 1;
+		$id = intval($_POST['id'] ?? 0);
+		$stmt = $this->db->prepare("DELETE FROM payments WHERE id = ?");
+		$stmt->bind_param("i", $id);
+		$delete = $stmt->execute();
+		$stmt->close();
+		if($delete) return 1;
+		return 0;
 	}
-
 }

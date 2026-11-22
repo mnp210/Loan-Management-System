@@ -9,12 +9,13 @@
  	
 
 <?php
-	session_start();
-  if(!isset($_SESSION['login_id']))
+  require_once __DIR__ . '/security.php';
+  if(!isset($_SESSION['login_id'])) {
     header('location:login.php');
- include('./header.php'); 
- // include('./auth.php'); 
- ?>
+    exit;
+  }
+  include('./header.php'); 
+?>
 
 </head>
 <style>
@@ -39,7 +40,26 @@
     </div>
   </div>
   <main id="view-panel" >
-      <?php $page = isset($_GET['page']) ? $_GET['page'] :'home'; ?>
+      <?php 
+        $allowed_pages = [
+          'home',
+          'borrowers',
+          'loans',
+          'payments',
+          'plan',
+          'loan_type',
+          'users'
+        ];
+        $page = isset($_GET['page']) ? trim($_GET['page']) : 'home';
+        // Check whitelist
+        if (!in_array($page, $allowed_pages, true)) {
+          $page = 'home';
+        }
+        // Restrict 'users' page to Admin only (login_type == 1)
+        if ($page === 'users' && ($_SESSION['login_type'] ?? null) != 1) {
+          $page = 'home';
+        }
+      ?>
   	<?php include $page.'.php' ?>
   	
 
@@ -95,8 +115,9 @@
     $.ajax({
         url:$url,
         error:err=>{
-            console.log()
+            console.log(err)
             alert("An error occured")
+            end_load()
         },
         success:function(resp){
             if(resp){
