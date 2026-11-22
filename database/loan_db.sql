@@ -200,7 +200,6 @@ INSERT INTO `payments` (`id`, `loan_id`, `payee`, `amount`, `penalty_amount`, `o
 
 CREATE TABLE `users` (
   `id` int(30) NOT NULL,
-  `doctor_id` int(30) NOT NULL,
   `name` varchar(200) NOT NULL,
   `address` text NOT NULL,
   `contact` text NOT NULL,
@@ -213,8 +212,8 @@ CREATE TABLE `users` (
 -- Dumping data for table `users`
 --
 
-INSERT INTO `users` (`id`, `doctor_id`, `name`, `address`, `contact`, `username`, `password`, `type`) VALUES
-(1, 0, 'Administrator', '', '', 'admin', 'admin123', 1);
+INSERT INTO `users` (`id`, `name`, `address`, `contact`, `username`, `password`, `type`) VALUES
+(1, 'Administrator', '', '', 'admin', '$2y$10$Bi/g6XN8.IjGx708YnYQd.iiW3Y4aMjgTlmCoVVzfS.JVxTTiDKk.', 1);
 
 --
 -- Indexes for dumped tables

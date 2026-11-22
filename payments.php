@@ -1,4 +1,4 @@
-<?php include 'db_connect.php' ?>
+<?php include 'db_connect.php'; ?>
 
 <div class="container-fluid">
 	<div class="col-lg-12">
@@ -8,63 +8,62 @@
 					<b>Payment List</b>
 					<button class="btn btn-primary btn-sm btn-block col-md-2 float-right" type="button" id="new_payments"><i class="fa fa-plus"></i> New Payment</button>
 				</large>
-				
 			</div>
 			<div class="card-body">
-				<table class="table table-bordered" id="loan-list">
+				<table class="table table-bordered" id="payment-list">
 					<colgroup>
-						<col width="10%">
-						<col width="25%">
-						<col width="25%">
+						<col width="5%">
 						<col width="20%">
-						<col width="10%">
-						<col width="10%">
+						<col width="30%">
+						<col width="15%">
+						<col width="15%">
+						<col width="15%">
 					</colgroup>
 					<thead>
 						<tr>
 							<th class="text-center">#</th>
 							<th class="text-center">Loan Reference No</th>
 							<th class="text-center">Payee</th>
-							<th class="text-center">Amount</th>
-							<th class="text-center">Penalty</th>
+							<th class="text-center">Amount Paid</th>
+							<th class="text-center">Penalty Paid</th>
 							<th class="text-center">Action</th>
 						</tr>
 					</thead>
 					<tbody>
 						<?php
-							
-							$i=1;
-							
-							$qry = $conn->query("SELECT p.*,l.ref_no,concat(b.lastname,', ',b.firstname,' ',b.middlename)as name, b.contact_no, b.address from payments p inner join loan_list l on l.id = p.loan_id inner join borrowers b on b.id = l.borrower_id  order by p.id asc");
-							while($row = $qry->fetch_assoc()):
-								
+							$i = 1;
+							$qry = $conn->query("SELECT p.*, l.ref_no, concat(b.lastname, ', ', b.firstname, ' ', b.middlename) as borrower_name 
+								FROM payments p 
+								INNER JOIN loan_list l ON l.id = p.loan_id 
+								INNER JOIN borrowers b ON b.id = l.borrower_id 
+								ORDER BY p.id ASC");
 
+							if ($qry) {
+								while($row = $qry->fetch_assoc()):
 						 ?>
 						 <tr>
-						 	
-						 	<td class="text-center"><?php echo $i++ ?></td>
+						 	<td class="text-center"><?php echo $i++; ?></td>
 						 	<td>
-						 		<?php echo $row['ref_no'] ?>
+						 		<b><?php echo escape($row['ref_no']); ?></b>
 						 	</td>
 						 	<td>
-						 		<?php echo $row['payee'] ?>
-						 		
+						 		<?php echo escape($row['payee']); ?>
+						 		<?php if(!empty($row['date_created'])): ?>
+						 			<br><small class="text-muted">Date: <?php echo date('M d, Y h:i A', strtotime($row['date_created'])); ?></small>
+						 		<?php endif; ?>
 						 	</td>
-						 	<td>
-						 		<?php echo number_format($row['amount'],2) ?>
-						 		
+						 	<td class="text-right">
+						 		<?php echo number_format($row['amount'], 2); ?>
+						 	</td>
+						 	<td class="text-right">
+						 		<?php echo number_format($row['penalty_amount'], 2); ?>
 						 	</td>
 						 	<td class="text-center">
-						 		<?php echo number_format($row['penalty_amount'],2) ?>
+						 			<button class="btn btn-outline-primary btn-sm edit_payment" type="button" data-id="<?php echo $row['id']; ?>"><i class="fa fa-edit"></i></button>
+						 			<button class="btn btn-outline-danger btn-sm delete_payment" type="button" data-id="<?php echo $row['id']; ?>"><i class="fa fa-trash"></i></button>
 						 	</td>
-						 	<td class="text-center">
-						 			<button class="btn btn-outline-primary btn-sm edit_payment" type="button" data-id="<?php echo $row['id'] ?>"><i class="fa fa-edit"></i></button>
-						 			<button class="btn btn-outline-danger btn-sm delete_payment" type="button" data-id="<?php echo $row['id'] ?>"><i class="fa fa-trash"></i></button>
-						 	</td>
-
 						 </tr>
-
-						<?php endwhile; ?>
+						<?php endwhile; } ?>
 					</tbody>
 				</table>
 			</div>
@@ -73,42 +72,44 @@
 </div>
 <style>
 	td p {
-		margin:unset;
+		margin: unset;
 	}
-	td img {
-	    width: 8vw;
-	    height: 12vh;
-	}
-	td{
+	td {
 		vertical-align: middle !important;
 	}
 </style>	
 <script>
-	$('#loan-list').dataTable()
+	$('#payment-list').dataTable();
 	$('#new_payments').click(function(){
-		uni_modal("New Payement","manage_payment.php",'mid-large')
-	})
+		uni_modal("New Payment", "manage_payment.php", 'mid-large');
+	});
 	$('.edit_payment').click(function(){
-		uni_modal("Edit Payement","manage_payment.php?id="+$(this).attr('data-id'),'mid-large')
-	})
+		uni_modal("Edit Payment", "manage_payment.php?id=" + $(this).attr('data-id'), 'mid-large');
+	});
 	$('.delete_payment').click(function(){
-		_conf("Are you sure to delete this data?","delete_payment",[$(this).attr('data-id')])
-	})
-function delete_payment($id){
-		start_load()
+		_conf("Are you sure you want to delete this payment?", "delete_payment", [$(this).attr('data-id')]);
+	});
+	function delete_payment($id){
+		start_load();
 		$.ajax({
-			url:'ajax.php?action=delete_payment',
-			method:'POST',
-			data:{id:$id},
-			success:function(resp){
-				if(resp==1){
-					alert_toast("Payment successfully deleted",'success')
+			url: 'ajax.php?action=delete_payment',
+			method: 'POST',
+			data: { id: $id, csrf_token: $('meta[name="csrf-token"]').attr('content') },
+			success: function(resp){
+				if(resp == 1){
+					alert_toast("Payment successfully deleted", 'success');
 					setTimeout(function(){
-						location.reload()
-					},1500)
-
+						location.reload();
+					}, 1500);
+				} else {
+					alert_toast("An error occurred while deleting payment", 'danger');
+					end_load();
 				}
+			},
+			error: function(){
+				alert_toast("Request failed", 'danger');
+				end_load();
 			}
-		})
+		});
 	}
 </script>
