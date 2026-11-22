@@ -1,9 +1,11 @@
 <?php 
-extract($_POST);
+$amount = floatval($_POST['amount'] ?? 0);
+$interest = floatval($_POST['interest'] ?? 0);
+$penalty_rate = floatval($_POST['penalty'] ?? 0);
+$months = max(1, intval($_POST['months'] ?? 1));
 
-$monthly = ($amount + ($amount * ($interest/100))) / $months;
-$penalty = $monthly * ($penalty/100);
-
+$monthly = ($amount + ($amount * ($interest / 100))) / $months;
+$penalty = $monthly * ($penalty_rate / 100);
 ?>
 <hr>
 <table width="100%">
@@ -13,9 +15,9 @@ $penalty = $monthly * ($penalty/100);
 		<th class="text-center" width="33.33%">Penalty Amount</th>
 	</tr>
 	<tr>
-		<td class="text-center"><small><?php echo number_format($monthly * $months,2) ?></small></td>
-		<td class="text-center"><small><?php echo number_format($monthly,2) ?></small></td>
-		<td class="text-center"><small><?php echo number_format($penalty,2) ?></small></td>
+		<td class="text-center"><small><?php echo number_format($monthly * $months, 2); ?></small></td>
+		<td class="text-center"><small><?php echo number_format($monthly, 2); ?></small></td>
+		<td class="text-center"><small><?php echo number_format($penalty, 2); ?></small></td>
 	</tr>
 </table>
 <hr>

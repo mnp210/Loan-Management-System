@@ -1,50 +1,47 @@
-<?php include('db_connect.php');?>
+<?php include('db_connect.php'); ?>
 
 <div class="container-fluid">
-	
 	<div class="col-lg-12">
 		<div class="row">
 			<!-- FORM Panel -->
 			<div class="col-md-4">
 			<form action="" id="manage-plan">
+				<input type="hidden" name="csrf_token" value="<?php echo csrf_token(); ?>">
 				<div class="card">
 					<div class="card-header">
-						   Plan's Form
+						   Loan Plan Form
 				  	</div>
 					<div class="card-body">
 							<input type="hidden" name="id">
 							<div class="form-group">
 								<label class="control-label">Plan (months)</label>
-								<input type="number" name="months" id="" class="form-control text-right">
+								<input type="number" name="months" id="" class="form-control text-right" required min="1">
 							</div>
 							<div class="form-group">
 								<label class="control-label">Interest</label>
 								<div class="input-group">
-								  <input type="number" step="any" min="0" max="100" class="form-control text-right" name="interest_percentage" aria-label="Interest">
+								  <input type="number" step="any" min="0" max="100" class="form-control text-right" name="interest_percentage" aria-label="Interest" required>
 								  <div class="input-group-append">
 								    <span class="input-group-text">%</span>
 								  </div>
 								</div>
 							</div>
 							<div class="form-group">
-								<label class="control-label">Monthly Over due's Penalty</label>
+								<label class="control-label">Monthly Overdue Penalty</label>
 								<div class="input-group">
-								  <input type="number" step="any" min="0" max="100" class="form-control text-right" aria-label="Penalty percentage" name="penalty_rate">
+								  <input type="number" step="any" min="0" max="100" class="form-control text-right" aria-label="Penalty percentage" name="penalty_rate" required>
 								  <div class="input-group-append">
 								    <span class="input-group-text">%</span>
 								  </div>
 								</div>
 							</div>
-							
-							
-							
 					</div>
 							
 					<div class="card-footer">
 						<div class="row">
 							<div class="col-md-12">
-								<button class="btn btn-sm btn-primary col-sm-3 offset-md-3"> Save</button>
-								<button class="btn btn-sm btn-default col-sm-3" type="button" onclick="_reset()"> Cancel</button>
+								<button class="btn btn-sm btn-primary col-sm-4 offset-md-2"> Save</button>
+								<button class="btn btn-sm btn-secondary col-sm-4" type="button" onclick="_reset()"> Cancel</button>
 							</div>
 						</div>
 					</div>
@@ -68,33 +65,37 @@
 							<tbody>
 								<?php 
 								$i = 1;
-								$plan = $conn->query("SELECT * FROM loan_plan order by id asc");
-								while($row=$plan->fetch_assoc()):
-									$months = $row['months'];
-									$months = $months / 12;
-									if($months < 1){
-										$months = $row['months']. " months";
-									}else{
-										$m = explode(".", $months);
-										$months = $m[0] . " yrs.";
-										if(isset($m[1])){
-											$months .= " and ".number_format(12 * ($m[1] /100 ),0)."month/s";
+								$plan = $conn->query("SELECT * FROM loan_plan order by months asc");
+								if ($plan) {
+									while($row = $plan->fetch_assoc()):
+										$months_num = intval($row['months']);
+										$duration_label = $months_num . " month/s";
+										if ($months_num >= 12) {
+											$years = floor($months_num / 12);
+											$rem = $months_num % 12;
+											$duration_label = $years . " yr" . ($years > 1 ? "s" : "");
+											if ($rem > 0) {
+												$duration_label .= " and " . $rem . " mo" . ($rem > 1 ? "s" : "");
+											}
 										}
-									}
 								?>
 								<tr>
-									<td class="text-center"><?php echo $i++ ?></td>
-									<td class="">
-										 <p>Years/Month: <b><?php echo $months ?></b></p>
-										 <p><small>Interest: <b><?php echo $row['interest_percentage']."%" ?></b></small></p>
-										 <p><small>Over dure Penalty: <b><?php echo $row['penalty_rate']."%" ?></b></small></p>
+									<td class="text-center"><?php echo $i++; ?></td>
+									<td>
+										 <p>Duration: <b><?php echo escape($duration_label); ?> (<?php echo escape($row['months']); ?> mos)</b></p>
+										 <p><small>Interest: <b><?php echo escape($row['interest_percentage']); ?>%</b></small></p>
+										 <p><small>Overdue Penalty: <b><?php echo escape($row['penalty_rate']); ?>%</b></small></p>
 									</td>
 									<td class="text-center">
-										<button class="btn btn-sm btn-primary edit_plan" type="button" data-id="<?php echo $row['id'] ?>" data-months="<?php echo $row['months'] ?>" data-interest_percentage="<?php echo $row['interest_percentage'] ?>" >Edit</button>
-										<button class="btn btn-sm btn-danger delete_plan" type="button" data-id="<?php echo $row['id'] ?>">Delete</button>
+										<button class="btn btn-sm btn-primary edit_plan" type="button" 
+											data-id="<?php echo $row['id']; ?>" 
+											data-months="<?php echo escape($row['months']); ?>" 
+											data-interest_percentage="<?php echo escape($row['interest_percentage']); ?>"
+											data-penalty_rate="<?php echo escape($row['penalty_rate']); ?>">Edit</button>
+										<button class="btn btn-sm btn-danger delete_plan" type="button" data-id="<?php echo $row['id']; ?>">Delete</button>
 									</td>
 								</tr>
-								<?php endwhile; ?>
+								<?php endwhile; } ?>
 							</tbody>
 						</table>
 					</div>
@@ -103,95 +104,86 @@
 			<!-- Table Panel -->
 		</div>
 	</div>	
-
 </div>
 <style>
-	
-	td{
+	td {
 		vertical-align: middle !important;
 	}
-	td p{
-		margin: unset
-	}
-	img{
-		max-width:100px;
-		max-height: :150px;
+	td p {
+		margin: unset;
 	}
 </style>
 <script>
 	function _reset(){
-		$('#cimg').attr('src','');
 		$('[name="id"]').val('');
 		$('#manage-plan').get(0).reset();
 	}
 	
 	$('#manage-plan').submit(function(e){
-		e.preventDefault()
-		start_load()
+		e.preventDefault();
+		start_load();
 		$.ajax({
-			url:'ajax.php?action=save_plan',
+			url: 'ajax.php?action=save_plan',
 			data: new FormData($(this)[0]),
 		    cache: false,
 		    contentType: false,
 		    processData: false,
 		    method: 'POST',
 		    type: 'POST',
-			success:function(resp){
-				if(resp==1){
-					alert_toast("Data successfully added",'success')
+			success: function(resp){
+				if(resp == 1){
+					alert_toast("Plan successfully saved", 'success');
 					setTimeout(function(){
-						location.reload()
-					},1500)
-
+						location.reload();
+					}, 1500);
+				} else {
+					alert_toast("An error occurred while saving plan", 'danger');
+					end_load();
 				}
-				else if(resp==2){
-					alert_toast("Data successfully updated",'success')
-					setTimeout(function(){
-						location.reload()
-					},1500)
-
-				}
+			},
+			error: function(){
+				alert_toast("Request failed", 'danger');
+				end_load();
 			}
-		})
-	})
+		});
+	});
+
 	$('.edit_plan').click(function(){
-		start_load()
-		var plan = $('#manage-plan')
-		plan.get(0).reset()
-		plan.find("[name='id']").val($(this).attr('data-id'))
-		plan.find("[name='months']").val($(this).attr('data-months'))
-		plan.find("[name='interest_percentage']").val($(this).attr('data-interest_percentage'))
-		plan.find("[name='penalty_reate']").val($(this).attr('data-penalty_reate'))
-		end_load()
-	})
+		start_load();
+		var plan = $('#manage-plan');
+		plan.get(0).reset();
+		plan.find("[name='id']").val($(this).attr('data-id'));
+		plan.find("[name='months']").val($(this).attr('data-months'));
+		plan.find("[name='interest_percentage']").val($(this).attr('data-interest_percentage'));
+		plan.find("[name='penalty_rate']").val($(this).attr('data-penalty_rate'));
+		end_load();
+	});
+
 	$('.delete_plan').click(function(){
-		_conf("Are you sure to delete this Plan?","delete_plan",[$(this).attr('data-id')])
-	})
-	function displayImg(input,_this) {
-    if (input.files && input.files[0]) {
-        var reader = new FileReader();
-        reader.onload = function (e) {
-        	$('#cimg').attr('src', e.target.result);
-        }
+		_conf("Are you sure you want to delete this plan?", "delete_plan", [$(this).attr('data-id')]);
+	});
 
-        reader.readAsDataURL(input.files[0]);
-    }
-}
 	function delete_plan($id){
-		start_load()
+		start_load();
 		$.ajax({
-			url:'ajax.php?action=delete_plan',
-			method:'POST',
-			data:{id:$id},
-			success:function(resp){
-				if(resp==1){
-					alert_toast("Data successfully deleted",'success')
+			url: 'ajax.php?action=delete_plan',
+			method: 'POST',
+			data: { id: $id, csrf_token: $('meta[name="csrf-token"]').attr('content') },
+			success: function(resp){
+				if(resp == 1){
+					alert_toast("Plan successfully deleted", 'success');
 					setTimeout(function(){
-						location.reload()
-					},1500)
-
+						location.reload();
+					}, 1500);
+				} else {
+					alert_toast("An error occurred while deleting plan", 'danger');
+					end_load();
 				}
+			},
+			error: function(){
+				alert_toast("Request failed", 'danger');
+				end_load();
 			}
-		})
+		});
 	}
 </script>

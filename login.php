@@ -11,10 +11,11 @@
 <?php include('./header.php'); ?>
 <?php include('./db_connect.php'); ?>
 <?php 
-session_start();
-if(isset($_SESSION['login_id']))
-header("location:index.php?page=home");
-
+require_once __DIR__ . '/security.php';
+if(isset($_SESSION['login_id'])) {
+    header("location:index.php?page=home");
+    exit;
+}
 ?>
 
 </head>
@@ -90,17 +91,16 @@ div#login-right::before {
 			  				<span class="fa fa-money-bill-wave"></span>
 			  			</div>
   					<form id="login-form" >
+  						<input type="hidden" name="csrf_token" value="<?php echo csrf_token(); ?>">
   						<div class="form-group">
   							<label for="username" class="control-label">Username</label>
-  							<input type="text" id="username" name="username" class="form-control">
+  							<input type="text" id="username" name="username" class="form-control" required>
   						</div>
   						<div class="form-group">
   							<label for="password" class="control-label">Password</label>
-  							<input type="password" id="password" name="password" class="form-control">
+  							<input type="password" id="password" name="password" class="form-control" required>
   						</div>
   						<center><button class="btn-sm btn-block btn-wave col-md-4 btn-primary">Login</button></center>
-						 
-						 
   					</form>
 					<center><button> <a href="register.php?page=home" > Register</a></button></center>
 					

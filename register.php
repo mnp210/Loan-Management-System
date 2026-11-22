@@ -8,10 +8,11 @@
   <?php include('./header.php'); ?>
 <?php include('./db_connect.php'); ?>
 <?php 
-session_start();
-if(isset($_SESSION['login_id']))
-header("location:index.php?page=home");
-
+require_once __DIR__ . '/security.php';
+if(isset($_SESSION['login_id'])) {
+    header("location:index.php?page=home");
+    exit;
+}
 ?>
 
 <style>  
